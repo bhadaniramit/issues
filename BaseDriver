@@ -1,0 +1,147 @@
+package base;
+
+import io.appium.java_client.AppiumDriver;
+import io.appium.java_client.android.AndroidDriver;
+import io.appium.java_client.ios.IOSDriver;
+import io.appium.java_client.pagefactory.AppiumFieldDecorator;
+import io.appium.java_client.remote.MobileCapabilityType;
+import io.cucumber.datatable.DataTable;
+import org.junit.Assert;
+import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.remote.DesiredCapabilities;
+import org.openqa.selenium.support.PageFactory;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+
+import java.io.IOException;
+import java.net.URL;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
+
+
+
+public class BaseDriver {
+    static FileHandling fileHandling = new FileHandling();
+    protected  static AppiumDriver driver;
+    static Logger logger = Logger.getLogger(BaseDriver.class.getName());
+    static String applicationUnderTest;
+    SaucelabTunnelConnect saucelabTunnelConnect = new SaucelabTunnelConnect();
+    Util util = new Util();
+    public static final long WAIT = 20;
+
+    public BaseDriver() {
+        PageFactory.initElements(new AppiumFieldDecorator(driver, Duration.ofSeconds(5)), this);
+    }
+
+
+    public  void start_driver(String deviceVersion, String applicationToTest, DataTable dataTable) throws IOException, InterruptedException {
+        List<Map<String, String>> USER_DEVICE_INPUT = dataTable.asMaps(String.class, String.class);
+        Util.setMap("Application_under_Test", applicationToTest);
+        if (deviceVersion.equalsIgnoreCase("Android")) {
+            driver = initiate_ANDROID_Driver(USER_DEVICE_INPUT);
+        } else if (deviceVersion.equalsIgnoreCase("ios")) {
+            driver = initiate_IOS_Driver(USER_DEVICE_INPUT);
+        } else {
+            logger.severe("Passed Platform does not support");
+        }
+    }
+
+
+    public static AndroidDriver initiate_ANDROID_Driver(List<Map<String, String>> userInput) throws IOException, InterruptedException {
+        for (Map android_device_info : userInput) {
+            DesiredCapabilities capabilities = new DesiredCapabilities();
+            DesiredCapabilities sauceOptions = new DesiredCapabilities();
+            sauceOptions.setCapability("tunnelIdentifier", fileHandling.readPropertyFile("saucelab-config").getProperty("tunnel-identifier"));
+//            sauceOptions.setCapability("resigningEnabled", true);
+            capabilities.setCapability("sauce:options", sauceOptions);
+            capabilities.setCapability(MobileCapabilityType.PLATFORM_VERSION, android_device_info.get("osVersion"));
+            capabilities.setCapability(MobileCapabilityType.DEVICE_NAME, android_device_info.get("DeviceName"));
+            capabilities.setCapability(MobileCapabilityType.PLATFORM_NAME, "Android");
+            applicationUnderTest = Util.getMap().get("Application_under_Test");
+            if (applicationUnderTest.equalsIgnoreCase("intune")) {
+                capabilities.setCapability(MobileCapabilityType.APP, "storage:filename=" + fileHandling.readPropertyFile("device-infra").getProperty("intuneAndroidFile"));
+            } else if (applicationUnderTest.equalsIgnoreCase("Teamcare")) {
+                capabilities.setCapability(MobileCapabilityType.APP, "storage:filename=" + fileHandling.readPropertyFile("device-infra").getProperty("TeamcareAndroidFile"));
+            }
+            sauceOptions.setCapability("name", "Test : " + android_device_info.get("DeviceName") + " - " + android_device_info.get("osVersion") + "  - " + Util.getMap().get("Application_under_Test"));
+            capabilities.setCapability(MobileCapabilityType.NEW_COMMAND_TIMEOUT, 54000);
+            capabilities.setCapability("automationName", "UiAutomator2");
+            capabilities.setCapability("autoGrantPermissions", "true");
+            capabilities.setCapability("noReset", "false");
+            Util.setMap("PlatformName", "Mobile");
+            logger.info("Connecting Sauce Lab and launching the device passed with cabilities - " + capabilities.toJson());
+            logger.info(SaucelabTunnelConnect.sauceLabConnection());
+            driver = new AndroidDriver(new URL(SaucelabTunnelConnect.sauceLabConnection()), capabilities);
+            logger.info("Connected to Android Device");
+            driver.manage().timeouts().implicitlyWait(30, TimeUnit.SECONDS);
+            Util.getScreenShotForIOS(driver, "index-screen");
+            Thread.sleep(5000);
+        }
+        return (AndroidDriver) driver;
+    }
+
+    public static IOSDriver initiate_IOS_Driver(List<Map<String, String>> userInput) throws IOException, InterruptedException    {
+        for (Map ios_device_info : userInput) {
+            DesiredCapabilities capabilities = new DesiredCapabilities();
+            DesiredCapabilities sauceOptions = new DesiredCapabilities();
+            sauceOptions.setCapability("tunnelIdentifier", fileHandling.readPropertyFile("saucelab-config").getProperty("tunnel-identifier"));
+            sauceOptions.setCapability("resigningEnabled", true);
+            capabilities.setCapability("sauce:options", sauceOptions);
+            capabilities.setCapability(MobileCapabilityType.PLATFORM_VERSION, ios_device_info.get("osVersion"));
+            capabilities.setCapability(MobileCapabilityType.DEVICE_NAME, ios_device_info.get("DeviceName"));
+            capabilities.setCapability(MobileCapabilityType.PLATFORM_NAME, "iOS");
+            applicationUnderTest = Util.getMap().get("Application_under_Test");
+            if (applicationUnderTest.equalsIgnoreCase("intune")) {
+                capabilities.setCapability(MobileCapabilityType.APP, "storage:filename=" + fileHandling.readPropertyFile("device-infra").getProperty("intuneIPAFile"));
+            } else if (applicationUnderTest.equalsIgnoreCase("Teamcare")) {
+                capabilities.setCapability(MobileCapabilityType.APP, "storage:filename=" + fileHandling.readPropertyFile("device-infra").getProperty("teamcareIPAFile"));
+            }
+            sauceOptions.setCapability("name", "Test : " + ios_device_info.get("DeviceName") + " - " + ios_device_info.get("osVersion") + "  - " + Util.getMap().get("Application_under_Test"));
+            capabilities.setCapability(MobileCapabilityType.NEW_COMMAND_TIMEOUT, 54000);
+            capabilities.setCapability("automationName", "XCuiTest");
+            capabilities.setCapability("autoAcceptAlerts", "true");
+            capabilities.setCapability("noReset", "false");
+            Util.setMap("PlatformName", "Mobile");
+            logger.info("Connecting Sauce Lab and launching the device passed with cabilities - " + capabilities.toJson());
+            driver = new IOSDriver(new URL(SaucelabTunnelConnect.sauceLabConnection()), capabilities);
+            logger.info(SaucelabTunnelConnect.sauceLabConnection());
+            logger.info("Connected to iOS Device");
+            driver.manage().timeouts().implicitlyWait(30, TimeUnit.SECONDS);
+            Util.getScreenShotForIOS(driver, "index-screen");
+            Thread.sleep(5000);
+        }
+        return (IOSDriver) driver;
+    }
+
+
+    public boolean waitForelementVisibility(WebElement element) {
+        try {
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(WAIT));
+            wait.until(ExpectedConditions.visibilityOf(element));
+            return true;
+        } catch (NoSuchElementException e) {
+            Assert.assertEquals(" Element not displayed", false, element.isDisplayed());
+            return false;
+        }
+    }
+
+    public void clickMethodCalledForios(WebElement element) {
+        waitForelementVisibility(element);
+        element.click();
+    }
+
+
+    public void sendKeysMethodCalledForIos(WebElement element, String keyToSend) {
+        element.sendKeys(keyToSend);
+    }
+
+    public String getAttributeForDevice(WebElement element, String attribute) {
+        waitForelementVisibility(element);
+        return element.getAttribute(attribute);
+    }
+
+}
